@@ -1,4 +1,4 @@
-# Automatic Classification of Persuasive Arguments
+# Journalling Chatbot
 Term project for ENGL 582 _Seminar in Computational Linguistics (Chatbots and Virtual Assistants)_ at RIT, 2019.
 
 [@glebpro](https://github.com/glebpro)

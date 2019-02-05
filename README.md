@@ -9,9 +9,12 @@ TBD
 ## Technicals
 
 ###### Setup IBM Watson Discovery Environment
+1. Go to [IBM Watons Discovery Page](https://www.ibm.com/watson/services/discovery/) and make a free account, create `hindsight-service`
 1. `$ export API_KEY={key}` replace `{key}` with API Key found in IBM Environment Console
 2. `$ export URL={url}` replace `{key}` with URL found
 3. `$ ./scripts/setup_ibm_enviornment.sh` to setup environment
+
+###### hindsight app
 
 To run the chatbot: `python scripts/hindsight.py`
 

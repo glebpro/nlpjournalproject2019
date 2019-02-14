@@ -6,4 +6,6 @@ key.json
 keys.json
 key.env
 keys.env
-/wiki_data
+/data/wiki_data
+/data/tcse_data
+/question-generation

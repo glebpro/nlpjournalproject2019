@@ -8,13 +8,14 @@
 
 import wikipedia
 import os
+import sys
 
 
 MAX_PAGES = 5
 MULTIPLER = 5
 LANG = 'en' #'en', 'nl', 'fr', etc...
 
-DATA_PATH = './wiki_data'
+DATA_PATH = sys.path[0]+'/wiki_data'
 if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
 
@@ -22,6 +23,7 @@ wikipedia.set_lang(LANG)
 
 print("~~~ Download language: %s" % LANG)
 print("~~~ Max number of pages to download: %s" % (MAX_PAGES * MULTIPLER))
+print("~~~ Saving to: %s", DATA_PATH)
 
 # get a bunch of random pages
 print("~~~ Downloading page titles...")

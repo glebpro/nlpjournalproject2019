@@ -12,7 +12,7 @@
 import os
 import re
 import json
-from enum import Enum
+
 from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/discovery?language=python
 
 class hindsight(object):
@@ -191,6 +191,11 @@ class hindsight(object):
         pass
 
 if __name__ == "__main__":
+
+    API_KEY= ""
+    URL= ""
+    enviornment_id = ""
+    collection_id = ""
 
     bot = hindsight(API_KEY, URL, enviornment_id, collection_id)
     bot.hello()

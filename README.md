@@ -18,10 +18,20 @@ TBD
 
 To run the chatbot: `python scripts/hindsight.py`
 
-Run `python data/download_wiki_data.py` to download random wikipedia articles into `/wiki_data` as test notes. Use `hindsight.add_notes_from_dir(path_to_wiki_data)` to add them as notes.
+Run `python data/download_wiki_data.py` to download random wikipedia articles into `data/wiki_data` as test notes.
+
+Run `python data/download_tcse_data.py` to download TED transcription utterances about the terms listed in `data/tcse_terms.txt` into `data/tcse_data`.
+
+Use `hindsight.add_notes_from_dir(path_to_data)` to add them as notes.
 
 #### Requirements
 `pip install --user -r requirements.txt`
 
 #### License
 MIT licensed. See the bundled [LICENSE](/LICENSE) file for more details.
+
+#### Works cited
+
+`https://yohasebe.com/tcse/` Hasebe, Yoichiro. (2015) Design and Implementation of an Online Corpus of Presentation Transcripts of TED Talks. Procedia: Social and Behavioral Sciences 198(24), 174–182.
+
+`http://www.cs.cmu.edu/~ark/mheilman/questions/papers/heilman-question-generation-dissertation.pdf`

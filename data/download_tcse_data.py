@@ -1,7 +1,10 @@
 #
 #   Download utterances from TED talks centered around terms listed in
 #   tcse_terms.txt. Will output `<timestamp> <utterance>` lines to `tcse_data/<term>.txt`
+#
 #   Timestamps assigned to random notes in equal distribution between 3 months.
+#
+#   Term not necessarily the subject of sentence, just present
 #
 #   Usage: python download_tcse_data.py
 #   Output: ./tcse_data/[term].txt
@@ -32,6 +35,7 @@ HEADERS = {
 BASE_URL = 'https://yohasebe.com/tcse'
 ROOT_PATH = sys.path[0]
 
+# for random timestamps
 START_DATE = datetime.datetime(2019, 1, 30)
 END_DATE = datetime.datetime(2019, 3, 30)
 
@@ -48,7 +52,10 @@ def getRandomTime():
     return str(random.random() * (END_DATE - START_DATE) + START_DATE)
 
 def executeQuery(term):
-
+    '''
+    Execute query to BASE_URL+'/execute'
+    Open network tab in browser to copy form data from.
+    '''
     data = {
       'text': term,
       'offset': '0',
@@ -66,7 +73,11 @@ def executeQuery(term):
     return response.text
 
 def download_tcse_terms():
-
+    '''
+    Download TED talk transcriptions that contain given term.
+    1 sentence at a time, term will simply be present in sentence, not
+    necessarily the subject of sentence.
+    '''
     for term in INPUT_TERMS:
         with open(OUTPUT_PATH + '/' + term + '.txt', 'w') as outfile:
 
@@ -79,7 +90,10 @@ def download_tcse_terms():
 
             # write random time and sentence down
             for sentence in data:
-                outfile.write(getRandomTime() + ' ' + sentence + '\n')
+                # outfile.write(getRandomTime() + ' ' + sentence + '\n')
+                outfile.write(sentence + '\n')
+
+            print("~~~ Saved %s" % (OUTPUT_PATH + '/' + term + '.txt'))
 
             # don't overload TCSE website
             time.sleep(2)

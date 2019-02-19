@@ -9,7 +9,9 @@
 import wikipedia
 import os
 import sys
-
+import datetime
+import random
+import re
 
 MAX_PAGES = 5
 MULTIPLER = 5
@@ -18,6 +20,14 @@ LANG = 'en' #'en', 'nl', 'fr', etc...
 DATA_PATH = sys.path[0]+'/wiki_data'
 if not os.path.exists(DATA_PATH):
     os.makedirs(DATA_PATH)
+
+# for random timestamps
+START_DATE = datetime.datetime(2019, 1, 30)
+END_DATE = datetime.datetime(2019, 3, 30)
+
+def getRandomTime():
+    return str(random.random() * (END_DATE - START_DATE) + START_DATE)
+
 
 wikipedia.set_lang(LANG)
 
@@ -49,9 +59,14 @@ for p in pages:
         print("!!! WARNING: failed to download content for: %s " % p)
         continue
 
-    fname = p.replace(' ', '_') + '.html'
+    # remove titles
+    data = re.sub("== .* ==", "", data)
+
+    # save
+    fname = p.replace(' ', '_') + '.txt'
     print("~~~ Saving: %s" % fname)
     output = open( DATA_PATH + '/' + fname, 'a')
+    # output.write(getRandomTime()+data)
     output.write(data)
 
 

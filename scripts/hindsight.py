@@ -15,7 +15,7 @@ import json
 
 from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/discovery?language=python
 
-class hindsight(object):
+class Hindsight(object):
 
     def __init__(self, API_KEY, URL, enviornment_id, collection_id):
         '''
@@ -31,7 +31,6 @@ class hindsight(object):
             'add_mode': 1,
             'ask_mode': 2
         }
-
 
         self.state = self.chat_states['add_mode']
         self.prompt = '>>> '
@@ -54,7 +53,7 @@ class hindsight(object):
         print('\n')
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('`hindsight`. A journalling application.')
-        print("commands: /add to enter 'add note' mode, /ask to enter 'query notes' mode, /quit to quit")
+        print("commands: \n\t/add to enter 'add note' mode, \n\t/ask to enter 'query notes' mode, \n\t/quit to quit")
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('\n')
 
@@ -190,6 +189,19 @@ class hindsight(object):
 
         pass
 
+
+    def get_collection_status(self):
+        '''
+        Return status object of current document collection.
+        '''
+        return self.discovery.get_collection(self.enviornment_id, self.collection_id).get_result()
+
+    def delete_doc(self, document_id):
+        '''
+        Delete document from collection
+        '''
+        return self.discovery.delete_document(self.enviornment_id, self.collection_id, document_id)
+
 if __name__ == "__main__":
 
     API_KEY= ""
@@ -197,10 +209,11 @@ if __name__ == "__main__":
     enviornment_id = ""
     collection_id = ""
 
-    bot = hindsight(API_KEY, URL, enviornment_id, collection_id)
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id)
     bot.hello()
 
-    bot.chat()
+    # bot.chat()
+    # print(bot.get_collection_status())
 
     # print( bot.query("When was the Kentucky Derby?") )
     # bot.add_notes_from_dir("/Users/gpro/gpc/rit/natling/project/data/wiki_data")

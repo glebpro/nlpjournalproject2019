@@ -14,6 +14,11 @@ TBD
 2. `$ export URL={url}` replace `{key}` with URL found
 3. `$ ./scripts/setup_ibm_enviornment.sh` to setup environment
 
+###### Setup IBM Watson Natual Language Understanding
+1. Go to [IBM Watson's Natural Langauge Unsderstanding Page](https://www.ibm.com/watson/services/natural-language-understanding/) and login with the account you made in the previous step.
+1. Create an instance of the NLU service (the name is unimportant)
+2. replace the {NLU_API_KEY} in the bottom the the hindsight.py file, with your NLU api key
+
 ###### hindsight app
 
 To run the chatbot: `python scripts/hindsight.py`

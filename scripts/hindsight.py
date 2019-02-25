@@ -6,18 +6,24 @@
 #
 #   Usage: python hindsight.py
 #
-#   Author: Gleb Promokhov @glebpro
+#   Authors: Gleb Promokhov @glebpro
+#            Joseph Agnelli @LambStack
 #
 
 import os
 import re
 import json
+import sys
+
 
 from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/discovery?language=python
+from watson_developer_cloud import NaturalLanguageUnderstandingV1
+from watson_developer_cloud.natural_language_understanding_v1 \
+    import Features, EntitiesOptions, KeywordsOptions
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL):
         '''
         Initialize a hindsight chatbot
 
@@ -42,9 +48,24 @@ class Hindsight(object):
             url = URL
         )
 
+        self.nlu = NaturalLanguageUnderstandingV1(
+            version='2018-11-16',
+            iam_apikey=NLU_API_KEY,
+            url= NLU_URL
+        )
+
         self.enviornment_id = enviornment_id
         self.collection_id = collection_id
 
+        self.ROOT_PATH = sys.path[0]
+
+        self.METADATA_PATH = self.ROOT_PATH+'/notes_metadata'
+        if not os.path.exists(self.METADATA_PATH):
+            os.makedirs(self.METADATA_PATH)
+
+        self.NOTES_PATH = self.ROOT_PATH+'/notes.html'
+        if not os.path.exists(self.NOTES_PATH):
+            os.makedirs(self.NOTES_PATH)
 
     def hello(self):
         '''
@@ -102,20 +123,67 @@ class Hindsight(object):
             self.chat()
 
     def add_note(self, note_text):
+
         '''
         Add `note_text` to given document by `title`.
         If `title` document not present, create a new one.
         '''
 
-        with open('tmp.html', 'a') as tmp_file:
-            tmp_file.write(note_text + "\n")
+        files_to_upload = []
+        sentences = re.split("[.?!]", note_text.strip(".?!"))
 
-        # get if titled note in collection already exists
-        # if not, create one
+        for sentence in sentences:
+
+
+            #write the note to the 'notes.html' file
+            with open(self.NOTES_PATH, 'a') as note_file:
+                note_file.write(sentence + "\n")
+
+            line_num = len(open(self.NOTES_PATH).readlines())
+            files_to_upload.append(self.NOTES_PATH)
+
+            print('S: '+ sentence)
+            entities = self.find_entities(sentence)
+
+            json_string = "{ lineNum : " + str(line_num) + "}"
+
+            #write the metadata into their respective json files
+            for entity in entities:
+                file_name = self.METADATA_PATH + '/' + entity.replace(' ', '_') + '.json'
+                with open(file_name, 'a') as meta_data:
+                    num_lines = sum(1 for line in open(file_name))
+                    if(num_lines >= 1):
+                        meta_data.write(",\n")
+                    meta_data.write(json_string)
+                files_to_upload.append(file_name)
 
         # save
-        result = self.add_note_file('tmp.html')
-        return result
+        results = [];
+        for file in set(files_to_upload):
+            results.append(self.add_note_file(file)) #comment this for testing
+
+        return results
+
+    def find_entities(self, text):
+        '''
+        Find all the entites in a given string
+        :param text: the string to find the entities
+        :return string array: an array of all the entities as
+        '''
+        response = self.nlu.analyze(
+            text=text,
+            features=Features(
+                entities=EntitiesOptions(emotion=False, sentiment=False),
+                keywords=KeywordsOptions(emotion=False, sentiment=False))).get_result()
+
+        #json_obj = json.loads(response)
+
+        #print(json.dumps(response, indent=2))
+        list_of_keywords = [];
+        for item in response["keywords"]:
+            list_of_keywords.append(item["text"])
+
+        return list_of_keywords
 
     def add_note_file(self, file_path):
         '''
@@ -205,16 +273,19 @@ class Hindsight(object):
 if __name__ == "__main__":
 
     API_KEY= ""
-    URL= ""
+    URL= "https://gateway.watsonplatform.net/discovery/api"
     enviornment_id = ""
     collection_id = ""
 
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id)
+    NLU_API_KEY = ""
+    NLU_URL = "https://gateway.watsonplatform.net/natural-language-understanding/api"
+
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL)
     bot.hello()
 
-    # bot.chat()
+    bot.chat()
     # print(bot.get_collection_status())
 
-    # print( bot.query("When was the Kentucky Derby?") )
+    # bot.add_note("the annual Socialist Scholars Conference in New York. ")
     # bot.add_notes_from_dir("/Users/gpro/gpc/rit/natling/project/data/wiki_data")
-    # bot.add_note_file("/Users/gpro/gpc/rit/natling/project/scripts/data/wiki_data/1948_Kentucky_Derby.html")
+    # bot.add_note_file("/Users/gpro/gpc/rit/natling/project/data/small.html")

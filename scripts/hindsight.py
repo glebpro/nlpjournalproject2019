@@ -20,10 +20,11 @@ from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/d
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
 from watson_developer_cloud.natural_language_understanding_v1 \
     import Features, EntitiesOptions, KeywordsOptions
+from watson_developer_cloud import AssistantV2
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID):
         '''
         Initialize a hindsight chatbot
 
@@ -36,6 +37,11 @@ class Hindsight(object):
         self.chat_states = {
             'add_mode': 1,
             'ask_mode': 2
+        }
+
+        self.intents = {
+            'ask_notes'      : 1,
+            'summarize_notes': 2
         }
 
         self.state = self.chat_states['add_mode']
@@ -54,8 +60,20 @@ class Hindsight(object):
             url= NLU_URL
         )
 
+
+        self.assistant = AssistantV2(
+            version='2018-11-08',
+            iam_apikey = ASSISTANT_API_KEY,
+            url= ASSISTANT_URL
+        )
+
+        self.session_id = self.assistant.create_session(
+            assistant_id = ASSISSTANT_ID
+        ).get_result()['session_id']
+
         self.enviornment_id = enviornment_id
         self.collection_id = collection_id
+        self.assistant_id = ASSISSTANT_ID
 
         self.ROOT_PATH = sys.path[0]
 
@@ -66,6 +84,14 @@ class Hindsight(object):
         self.NOTES_PATH = self.ROOT_PATH+'/notes.html'
         if not os.path.exists(self.NOTES_PATH):
             os.makedirs(self.NOTES_PATH)
+
+        self.INTENT_LINES = []
+        if not os.path.exists(self.ROOT_PATH+'/intent_training_data.csv'):
+            print('!!! ERROR: ./scripts/intent_training_data.csv required')
+            quit()
+        lines = open(self.ROOT_PATH+'/intent_training_data.csv').readlines()
+        lines = [l.strip().split(',')[0] for l in lines]
+        self.INTENT_LINES = lines
 
     def hello(self):
         '''
@@ -83,6 +109,15 @@ class Hindsight(object):
         Start chat loop.
         '''
 
+        # preprocess text for API input
+        # crudely remove training data phrases to get 'non-intent' part of input
+        def _scrubHindsightIntentQueryText(raw_input):
+            pattern = re.compile("\\b("+'|'.join(self.INTENT_LINES)+")\\W", re.I)
+            result = raw_input.strip().lower()
+            result = pattern.sub("", result)
+            return result
+
+
         raw_input = str(input(self.prompt + self.state_prompt))
 
         if raw_input == '/quit':
@@ -91,36 +126,76 @@ class Hindsight(object):
         elif raw_input == '/add':
             self.state = self.chat_states['add_mode']
             self.state_prompt = 'Add a note: '
-            self.chat()
 
         elif raw_input == '/ask':
             self.state = self.chat_states['ask_mode']
             self.state_prompt = 'Ask your notes: '
-            self.chat()
 
         else:
+
+            response = ''
+
+            # ADD mode
             if self.state == self.chat_states['add_mode']:
                 self.add_note(raw_input)
 
+            # ASK mode
             elif self.state == self.chat_states['ask_mode']:
 
-                print(self.prompt + "Here's what I found: \n")
+                # what is the user intented to do?
+                intent = self.parse_ask_intent(raw_input)
 
-                results = self.query(raw_input)
+                # if a hindsight intent
+                if intent in list(self.intents.keys()):
 
-                if len(results.result['passages']) == 0:
-                    print(self.prompt + "I actually didn't find anything...")
+                    query_text = _scrubHindsightIntentQueryText(raw_input)
 
-                elif len(results.result['passages']) == 1:
-                    print(self.prompt + "I found this one note: ")
-                    print(results.result['passages'][0]['passage_text'])
+                    if intent == "summarize_notes":
 
+                        response = self.discovery.query(self.enviornment_id, self.collection_id,
+                                                        natural_language_query = query_text,
+                                                        count=1000)
+
+                        #SUMMARIZE
+
+                        # print(response)
+
+
+                    if intent == "ask_notes":
+                        response = self.discovery.query(self.enviornment_id, self.collection_id,
+                                                        natural_language_query = query_text,
+                                                        passages_count = notes_count,
+                                                        sort="-time",
+                                                        highlight=True,
+                                                        count=5)
+
+                # goodbye/ending intent
+                elif intent == "General_Ending":
+                    print('All right then, goodbye!')
+                    return 1
+
+                # else use default response
                 else:
-                    print(self.prompt + "I found these notes: ")
-                    for passage in results['result']['passages']:
-                        print(passage['passage_text'])
+                    print('I am note sure what you mean...')
 
-            self.chat()
+        self.chat()
+
+    def parse_ask_intent(self, raw_input):
+
+        input = raw_input.strip()
+
+        response = self.assistant.message(
+            assistant_id=self.assistant_id,
+            session_id=self.session_id,
+            input={
+                'message_type': 'text',
+                'text': input
+            }
+        ).get_result()
+
+        print(json.dumps(response, indent=2))
+
+        return response["output"]["intents"][0]["intent"]
 
     def add_note(self, note_text):
 
@@ -129,11 +204,12 @@ class Hindsight(object):
         If `title` document not present, create a new one.
         '''
 
+        # TODO: way to force all notes into specific title, skip parsing
+
         files_to_upload = []
         sentences = re.split("[.?!]", note_text.strip(".?!"))
 
         for sentence in sentences:
-
 
             #write the note to the 'notes.html' file
             with open(self.NOTES_PATH, 'a') as note_file:
@@ -142,7 +218,7 @@ class Hindsight(object):
             line_num = len(open(self.NOTES_PATH).readlines())
             files_to_upload.append(self.NOTES_PATH)
 
-            print('S: '+ sentence)
+            # print('S: '+ sentence)
             entities = self.find_entities(sentence)
 
             json_string = "{ lineNum : " + str(line_num) + "}"
@@ -227,37 +303,6 @@ class Hindsight(object):
 
         return results
 
-    def query(self, query_text, notes_count=1):
-        '''
-        Use IBM Discovery 'query' API to access notes.
-
-        :param notes_count: max note count to get
-        :param query_text: raw query text
-        :return: top relevant notes
-        '''
-
-        # can access IBM Collection with query language `query=` or for IBM NLP `natural_language_query=`
-        # many parameters in API
-
-        result = self.discovery.query(self.enviornment_id, self.collection_id,
-                                        natural_language_query = query_text,
-                                        passages_count=notes_count)
-
-        return result
-
-    def query_entity(self, entity, notes_count=5):
-        '''
-        Use IBM Discovery 'query_entity' API to access notes.
-
-        :param query_text: proper entitiy
-        :return: top relevant notes
-        '''
-
-        # query specific document by title with raw query text
-
-        pass
-
-
     def get_collection_status(self):
         '''
         Return status object of current document collection.
@@ -272,15 +317,21 @@ class Hindsight(object):
 
 if __name__ == "__main__":
 
+
     API_KEY= ""
     URL= "https://gateway.watsonplatform.net/discovery/api"
     enviornment_id = ""
     collection_id = ""
 
+
     NLU_API_KEY = ""
     NLU_URL = "https://gateway.watsonplatform.net/natural-language-understanding/api"
 
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL)
+    ASSISTANT_KEY = ""
+    ASSISTANT_URL = ""
+    ASSISSTANT_ID =
+
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL,  ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID)
     bot.hello()
 
     bot.chat()

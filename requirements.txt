@@ -1,2 +1,1 @@
-wikipedia > 1.4.0
 watson_developer_cloud > 2.7.0

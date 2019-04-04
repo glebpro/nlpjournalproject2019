@@ -14,6 +14,7 @@
 
 import requests
 import os
+import re
 import sys
 import json
 import time
@@ -45,7 +46,7 @@ if not os.path.exists(OUTPUT_PATH):
     os.makedirs(OUTPUT_PATH)
 
 # get intput terms
-INPUT_TERMS = open(ROOT_PATH+'/tcse_terms.txt', 'r').readlines()
+INPUT_TERMS = open(ROOT_PATH+'/tcse_terms_small.txt', 'r').readlines()
 INPUT_TERMS = [i.strip() for i in INPUT_TERMS]
 
 def getRandomTime():
@@ -78,6 +79,7 @@ def download_tcse_terms():
     1 sentence at a time, term will simply be present in sentence, not
     necessarily the subject of sentence.
     '''
+    cleanr = re.compile('<.*?>')
     for term in INPUT_TERMS:
         with open(OUTPUT_PATH + '/' + term + '.txt', 'w') as outfile:
 
@@ -90,6 +92,8 @@ def download_tcse_terms():
 
             # write random time and sentence down
             for sentence in data:
+
+                sentence = re.sub(cleanr, '', sentence)
                 # outfile.write(getRandomTime() + ' ' + sentence + '\n')
                 outfile.write(sentence + '\n')
 

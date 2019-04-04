@@ -1,27 +1,27 @@
 
 
-0. explore IBM API, lots of options
+text to speech <----> speech to text
 
-1. way to evaluate application
-  a. gold standard corpus
-  b. scoring
+neat GUI app on top
 
-  https://yohasebe.com/tcse great resource because they're speech transcriptions, can search by term
+text to short in some places with break things:
+  when inputing to short query or to short note
 
-  
-  https://github.com/sumehta/question-generation very good automatic question/answer generation
+better way of separating 'intent language' from 'subject language'
+  'tell me my notes about dogs' --> tell me my notes about + 'dogs'
 
-  start with automatically generate "WH" (who, what when, where, why(?)) question/answer pairs ??
+if there is no intent detected it will break
 
-  MTurk the rest
+"no title\n\n
+is inserted into each doc on upload to IBM for some reason
 
-  how far do we need to test at all?
+lexalizing parsed entity
 
-2. will need to code up journal specific queries 'tell me about X', 'what did I say about 4 yesterday?'
-    identify list of top 15(?) journal app queries
-    mapping this to the IBM query language
+removing duplicate text and information
 
-3. neat GUI app on top
+notice the entities produced in /notes_metadata, how could they be condensed? more detailed? organized?
 
-4. optimize corpus organization for IBM collection, would detecting top entity and mapping into specific
-  .html file make any sense?
+line 139 # SUMMARIZE_HERE
+  need a summarization algorithm how to?
+
+COLLECTION status block is very slow

@@ -15,17 +15,24 @@ import re
 import json
 import sys
 import pickle
-
+import pyaudio
+import wave
+import requests
+from collections import deque
+import math
+import audioop
+import time
 
 from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/discovery?language=python
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
 from watson_developer_cloud.natural_language_understanding_v1 import Features, EntitiesOptions, KeywordsOptions
 from watson_developer_cloud import AssistantV2
 from watson_developer_cloud.watson_service import WatsonApiException
+from ibm_watson import SpeechToTextV1
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL):
         '''
         Initialize a hindsight chatbot
 
@@ -39,6 +46,7 @@ class Hindsight(object):
             'add_mode': 1,
             'ask_mode': 2
         }
+        self.speech_mode_enabled = False
 
         self.intents = {
             'show_notes'     : 1,
@@ -105,6 +113,12 @@ class Hindsight(object):
         lines = open(self.ROOT_PATH+'/intent_training_data.csv').readlines()
         self.INTENT_LINES = [l.strip().split(',')[0] for l in lines]
 
+        self.S2T_KEY = S2T_KEY
+        self.S2T_URL = S2T_URL
+
+        self.pyAudio = pyaudio.PyAudio()
+
+
     def hello(self):
         '''
         Introductory Message
@@ -112,7 +126,7 @@ class Hindsight(object):
         print('\n')
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('`hindsight`. A journalling application.')
-        print("commands: \n\t/add to enter 'add note' mode, \n\t/ask to enter 'query notes' mode, \n\t/quit to quit")
+        print("commands: \n\t/add to enter 'add note' mode, \n\t/ask to enter 'query notes' mode, \n\t/speech to enable voice interface (say 'disable speech' to turn off) \n\t/quit to quit")
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('\n')
 
@@ -174,9 +188,19 @@ class Hindsight(object):
 
             return result
 
-        raw_input = str(input(self.prompt + self.state_prompt))
+        if(self.speech_mode_enabled):
+            print(self.chatprompt+"Please say your query...")
+            raw_input = self.speech_to_text()
+            print(self.chatprompt+"I think you said: "+raw_input)
+        else:
+            raw_input = str(input(self.prompt + self.state_prompt))
+        raw_input = raw_input.strip()
 
-        if raw_input == '/quit':
+        if raw_input == '':
+            print(self.chatprompt+"I didn't catch that, could you try again?")
+            return self.chat()
+
+        elif raw_input == '/quit':
             return 1
 
         elif raw_input == '/add':
@@ -186,6 +210,15 @@ class Hindsight(object):
         elif raw_input == '/ask':
             self.state = self.chat_states['ask_mode']
             self.state_prompt = 'Ask your notes: '
+
+        elif raw_input == '/speech':
+            self.speech_mode_enabled = True
+            print(self.chatprompt+"You have enabled speech to text input, and text to speech output.")
+
+
+        elif raw_input == 'disable speech':
+            self.speech_mode_enabled = False
+            print(self.chatprompt+"You have disabled speech.")
 
         else:
 
@@ -239,9 +272,9 @@ class Hindsight(object):
 
                 # else use default response
                 else:
-                    print(self.chatprompt+'I am note sure what you mean...')
+                    print(self.chatprompt+'I am not sure what you mean...')
 
-        self.chat()
+        return self.chat()
 
     def parse_ask_intent(self, raw_input):
 
@@ -259,8 +292,9 @@ class Hindsight(object):
         ).get_result()
 
         # print(json.dumps(response, indent=2))
-
-        return response["output"]["intents"][0]["intent"]
+        if(len(response["output"]["intents"]) > 0):
+            return response["output"]["intents"][0]["intent"]
+        return -1
 
     def add_note(self, note_text):
 
@@ -291,8 +325,8 @@ class Hindsight(object):
 
         # keep track of entities locally
         pickle.dump(global_entities, open( self.GLOBAL_ENTITIES, "wb" ) )
-        print((note_text[:100]+'...') if len(note_text) > 100 else note_text)
-        print("\t%s %s\n" % (best_entity, global_entities[best_entity]))
+        # print((note_text[:100]+'...') if len(note_text) > 100 else note_text)
+        # print("\t%s %s\n" % (best_entity, global_entities[best_entity]))
 
         # save note to local path
         best_entity = re.sub(' ', '_', best_entity)
@@ -362,6 +396,91 @@ class Hindsight(object):
 
         return result.result['document_id']
 
+    def speech_to_text(self):
+
+        def save_speech(data, p):
+            '''
+            Saves mic data to temporary WAV file.
+            '''
+            filename = 'output_'+str(int(time.time()))
+            # writes data to WAV file
+            data = b''.join(data)
+            wf = wave.open(filename + '.wav', 'wb')
+            wf.setnchannels(1)
+            wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
+            wf.setframerate(16000)  # TODO make this value a function parameter?
+            wf.writeframes(data)
+            wf.close()
+            return filename + '.wav'
+
+        def ibm_send(filename):
+            HEADERS = {
+                'Content-Type': 'audio/wav'
+            }
+
+            data = open(filename, 'rb').read()
+            response = requests.post(self.S2T_URL+'/v1/recognize', headers=HEADERS, data=data, auth=('apikey', self.S2T_KEY))
+            return response.json()
+
+        CHUNK = 1024  # CHUNKS of bytes to read each time from mic
+        FORMAT = pyaudio.paInt16
+        CHANNELS = 1
+        RATE = 16000
+        THRESHOLD = 225  # The threshold intensity that defines silence
+                          # and noise signal (an int. lower than THRESHOLD is silence).
+
+        SILENCE_LIMIT = 1  # Silence limit in seconds. The max ammount of seconds where
+                           # only silence is recorded. When this time passes the
+                           # recording finishes and the file is delivered.
+
+        PREV_AUDIO = 0.5  # Previous audio (in seconds) to prepend. When noise
+                          # is detected, how much of previously recorded audio is
+                          # prepended. This helps to prevent chopping the beggining
+                          # of the phrase.
+
+        #Open stream
+        stream = self.pyAudio.open(format=FORMAT,
+                        channels=CHANNELS,
+                        rate=RATE,
+                        input=True,
+                        frames_per_buffer=CHUNK)
+
+        print(self.chatprompt+"Say your query whenever you are ready")
+        audio2send = []
+        cur_data = ''  # current chunk  of audio data
+        rel = RATE/CHUNK
+        slid_win = deque(maxlen=int(SILENCE_LIMIT * rel))
+        #Prepend audio from 0.5 seconds before noise was detected
+        prev_audio = deque(maxlen=int(PREV_AUDIO * rel))
+        started = False
+        num_phrases = -1
+        n = num_phrases
+        response = ''
+
+        while (num_phrases == -1 or n > 0):
+            cur_data = stream.read(CHUNK)
+            slid_win.append(math.sqrt(abs(audioop.avg(cur_data, 4))))
+            if(sum([x > THRESHOLD for x in slid_win]) > 0):
+                if(not started):
+                    print(self.chatprompt+"I have started recording")
+                    started = True
+                audio2send.append(cur_data)
+            elif (started is True):
+                # The limit was reached, finish capture and deliver.
+                filename = save_speech(list(prev_audio) + audio2send, self.pyAudio)
+                # Send file to Google and get response
+                response = ibm_send(filename)
+                os.remove(filename)
+                break
+            else:
+                prev_audio.append(cur_data)
+
+        stream.close()
+
+        if(len(response["results"]) > 0):
+            return response["results"][0]["alternatives"][0]["transcript"]
+        return ''
+
     def get_collection_status(self):
         response = self.discovery.get_collection(self.enviornment_id, self.collection_id).get_result()
         # print(json.dumps(response, indent=2))
@@ -381,11 +500,16 @@ if __name__ == "__main__":
     ASSISTANT_KEY = ""
     ASSISTANT_URL = ""
     ASSISSTANT_ID = ""
-    
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID)
+
+    S2T_KEY = ""
+    S2T_URL = ""
+
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL)
     bot.hello()
 
     bot.chat()
+
+    # bot.speech_to_text()
 
     # print(pickle.load( open( bot.GLOBAL_ENTITIES, "rb" ) ))
 

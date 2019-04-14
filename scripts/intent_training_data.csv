@@ -22,3 +22,16 @@ sum up the points,summarize_notes
 sum up,summarize_notes
 what is most important about,summarize_notes
 most important,summarize_notes
+how do I feel about,sentiment_notes
+feel about,sentiment_notes
+what are my feelings towards,sentiment_notes
+what is my sentiment about,sentiment_notes
+what are my emotions about,sentiment_notes
+what are my feelings,sentiment_notes
+what do I think about,sentiment_notes
+what is my attitude towards ,sentiment_notes
+what is my attitude about ,sentiment_notes
+attitude about,sentiment_notes
+my attitude about,sentiment_notes
+what is my opinion on,sentiment_notes
+opinion about,sentiment_notes

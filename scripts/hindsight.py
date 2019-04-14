@@ -41,13 +41,14 @@ class Hindsight(object):
         }
 
         self.intents = {
-            'show_notes'      : 1,
-            'summarize_notes': 2
+            'show_notes'     : 1,
+            'summarize_notes': 2,
+            'sentiment_notes': 3
         }
 
         self.state = self.chat_states['add_mode']
         self.prompt = '>>> '
-        self.chatprompt = '~~~ '
+        self.chatprompt = '\t~~~ '
         self.state_prompt = 'Add a note: '
 
         self.discovery = DiscoveryV1(
@@ -102,8 +103,7 @@ class Hindsight(object):
             print('!!! ERROR: ./scripts/intent_training_data.csv required')
             quit()
         lines = open(self.ROOT_PATH+'/intent_training_data.csv').readlines()
-        lines = [l.strip().split(',')[0] for l in lines]
-        self.INTENT_LINES = lines
+        self.INTENT_LINES = [l.strip().split(',')[0] for l in lines]
 
     def hello(self):
         '''
@@ -134,7 +134,7 @@ class Hindsight(object):
                                             natural_language_query = query_text,
                                             count=1000)
 
-            results = [result_doc["text"] for result_doc in response.result["results"]]
+            results = [result_doc["html"] for result_doc in response.result["results"]]
 
             # SUMMARIZE_HERE
 
@@ -143,13 +143,36 @@ class Hindsight(object):
         def _showNotesRoutine(query_text):
             response = self.discovery.query(self.enviornment_id, self.collection_id,
                                     natural_language_query = query_text,
-                                    # sort="enriched_text.sentiment.document.score",
-                                    # highlight=True,
                                     count=5 )
 
             results = [result_doc["text"] for result_doc in response.result["results"]]
             return results
 
+        def _sentimentNotesRoutine(query_text):
+            response = self.discovery.query(self.enviornment_id, self.collection_id,
+                        natural_language_query = query_text,
+                        count=5 )
+
+            sentiments = [result_doc["enriched_text"]["sentiment"]["document"]["score"] for result_doc in response.result["results"]]
+            avg_sentiment = sum(sentiments)/len(sentiments)
+            result = []
+
+            if -0.75 > avg_sentiment:
+                result.append("Your notes show that you feel terrible about that!")
+            if -0.50 < avg_sentiment and avg_sentiment < -0.25:
+                result.append("Your notes show that you feel pretty bad about that!")
+            if -0.25 < avg_sentiment and avg_sentiment < 0:
+                result.append("Your notes show that you don't feel to bad about that.")
+            if 0 < avg_sentiment and avg_sentiment < .25:
+                result.append("Your notes show that you feel pretty OK about that.")
+            if .25 < avg_sentiment and avg_sentiment < .5:
+                result.append("Your notes show that you feel well and good about that.")
+            if .5 < avg_sentiment and avg_sentiment < .75:
+                result.append("Your notes show that you feel really happy about that!")
+            if .75 < avg_sentiment:
+                result.append("Your notes show that you feel really fantastic about that!")
+
+            return result
 
         raw_input = str(input(self.prompt + self.state_prompt))
 
@@ -199,6 +222,8 @@ class Hindsight(object):
                         results = _summarizeNotesRoutine(query_text)
                     if intent == "show_notes":
                         results = _showNotesRoutine(query_text)
+                    if intent == "sentiment_notes":
+                        results = _sentimentNotesRoutine(query_text)
 
                     print(self.chatprompt+"Here are some results...")
 
@@ -344,7 +369,6 @@ class Hindsight(object):
 
 if __name__ == "__main__":
 
-
     API_KEY= ""
     URL= "https://gateway.watsonplatform.net/discovery/api"
     enviornment_id = ""
@@ -356,27 +380,30 @@ if __name__ == "__main__":
 
     ASSISTANT_KEY = ""
     ASSISTANT_URL = ""
-    ASSISSTANT_ID =
-
+    ASSISSTANT_ID = ""
+    
     bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID)
     bot.hello()
 
-    # bot.chat()
+    bot.chat()
 
-    def add_mode_file_input(path, bot):
-        '''
-        Add every line from file as 'add note' conversation input.
+    # print(pickle.load( open( bot.GLOBAL_ENTITIES, "rb" ) ))
 
-        :param path: filepath to document file or folder
-        '''
-        lines = []
-        if os.path.isfile(path):
-            lines += open(path).readlines()
-        else:
-            for f in [entry for entry in os.listdir(path) if os.path.isfile(os.path.join(path,entry))]:
-                print("reading: %s" % f)
-                lines += open(path+f).readlines()
-        for l in lines:
-            bot.add_note(l.strip())
-            
-    add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)
+
+    # def add_mode_file_input(path, bot):
+    #     '''
+    #     Add every line from file as 'add note' conversation input.
+    #
+    #     :param path: filepath to document file or folder
+    #     '''
+    #     lines = []
+    #     if os.path.isfile(path):
+    #         lines += open(path).readlines()
+    #     else:
+    #         for f in [entry for entry in os.listdir(path) if os.path.isfile(os.path.join(path,entry))]:
+    #             print("reading: %s" % f)
+    #             lines += open(path+f).readlines()
+    #     for l in lines:
+    #         bot.add_note(l.strip())
+    #
+    # add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)

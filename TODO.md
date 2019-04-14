@@ -23,5 +23,6 @@ notice the entities produced in /notes_metadata, how could they be condensed? mo
 
 line 139 # SUMMARIZE_HERE
   need a summarization algorithm how to?
+  use IBM query language api to do this ?
 
 COLLECTION status block is very slow

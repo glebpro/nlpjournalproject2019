@@ -32,7 +32,7 @@ from ibm_watson import SpeechToTextV1
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMY_API_KEY):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMRY_API_KEY):
         '''
         Initialize a hindsight chatbot
 
@@ -118,7 +118,7 @@ class Hindsight(object):
 
         self.pyAudio = pyaudio.PyAudio()
 
-        self.SMMY_API_KEY = SMMY_API_KEY
+        self.SMMRY_API_KEY = SMMRY_API_KEY
 
 
     def hello(self):
@@ -156,7 +156,7 @@ class Hindsight(object):
             for result in results:
                 unsummarizedText += result.splitlines()[2] #the sentences are at index 2, title at 0, space a 1
 
-            response = requests.post("https://api.smmry.com/SM_API_KEY="+self.SMMY_API_KEY, data = {
+            response = requests.post("https://api.smmry.com/SM_API_KEY="+self.SMMRY_API_KEY, data = {
                 "sm_api_input": unsummarizedText})
 
             return([response.json()['sm_api_content']])
@@ -488,13 +488,29 @@ class Hindsight(object):
             return response["results"][0]["alternatives"][0]["transcript"]
         return ''
 
+    def add_mode_file_input(self, path, bot):
+        '''
+        Add every line from file as 'add note' conversation input.
+
+        :param path: filepath to document file or folder
+        '''
+        lines = []
+        if os.path.isfile(path):
+            lines += open(path).readlines()
+        else:
+            for f in [entry for entry in os.listdir(path) if os.path.isfile(os.path.join(path,entry))]:
+                print("reading: %s" % f)
+                lines += open(path+f).readlines()
+        for l in lines:
+            self.add_note(l.strip())
+
     def get_collection_status(self):
         response = self.discovery.get_collection(self.enviornment_id, self.collection_id).get_result()
         # print(json.dumps(response, indent=2))
         return round( (response["document_counts"]["available"] / (response["document_counts"]["processing"] + response["document_counts"]["available"])) * 100 , 2 )
 
 if __name__ == "__main__":
-    
+
     API_KEY= ""
     URL= "https://gateway.watsonplatform.net/discovery/api"
     enviornment_id = ""
@@ -511,32 +527,11 @@ if __name__ == "__main__":
     S2T_KEY = ""
     S2T_URL = ""
 
-    SMMY_API_KEY = ""
+    SMMRY_API_KEY = ""
 
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMY_API_KEY)
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMRY_API_KEY)
     bot.hello()
 
     bot.chat()
 
-    # bot.speech_to_text()
-
-    # print(pickle.load( open( bot.GLOBAL_ENTITIES, "rb" ) ))
-
-
-    # def add_mode_file_input(path, bot):
-    #     '''
-    #     Add every line from file as 'add note' conversation input.
-    #
-    #     :param path: filepath to document file or folder
-    #     '''
-    #     lines = []
-    #     if os.path.isfile(path):
-    #         lines += open(path).readlines()
-    #     else:
-    #         for f in [entry for entry in os.listdir(path) if os.path.isfile(os.path.join(path,entry))]:
-    #             print("reading: %s" % f)
-    #             lines += open(path+f).readlines()
-    #     for l in lines:
-    #         bot.add_note(l.strip())
-    #
-    # add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)
+    # add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/")

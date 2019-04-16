@@ -15,7 +15,7 @@ import re
 import json
 import sys
 import pickle
-
+import requests
 
 from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/discovery?language=python
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
@@ -25,7 +25,7 @@ from watson_developer_cloud.watson_service import WatsonApiException
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, SMMY_API_KEY):
         '''
         Initialize a hindsight chatbot
 
@@ -105,6 +105,8 @@ class Hindsight(object):
         lines = [l.strip().split(',')[0] for l in lines]
         self.INTENT_LINES = lines
 
+        self.SMMY_API_KEY = SMMY_API_KEY
+
     def hello(self):
         '''
         Introductory Message
@@ -134,12 +136,20 @@ class Hindsight(object):
                                             natural_language_query = query_text,
                                             count=1000)
 
+           
             results = [result_doc["text"] for result_doc in response.result["results"]]
 
-            # SUMMARIZE_HERE
+            unsummarizedText = "";
+            
+            for result in results:
+                unsummarizedText += result.splitlines()[2] #the sentences are at index 2, title at 0, space a 1
+        
 
-            return results
+            response = requests.post("https://api.smmry.com/SM_API_KEY="+self.SMMY_API_KEY, data = {
+                "sm_api_input": unsummarizedText})
 
+            return([response.json()['sm_api_content']])
+        
         def _showNotesRoutine(query_text):
             response = self.discovery.query(self.enviornment_id, self.collection_id,
                                     natural_language_query = query_text,
@@ -345,23 +355,27 @@ class Hindsight(object):
 if __name__ == "__main__":
 
 
-    API_KEY= ""
     URL= "https://gateway.watsonplatform.net/discovery/api"
+    API_KEY= ""
     enviornment_id = ""
     collection_id = ""
 
-
-    NLU_API_KEY = ""
     NLU_URL = "https://gateway.watsonplatform.net/natural-language-understanding/api"
+    NLU_API_KEY = ""
 
     ASSISTANT_KEY = ""
-    ASSISTANT_URL = ""
-    ASSISSTANT_ID =
+    ASSISTANT_URL = "https://gateway.watsonplatform.net/assistant/api"
+    ASSISSTANT_ID = ""
 
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID)
+    S2T_KEY = ""
+    S2T_URL = "https://stream.watsonplatform.net/speech-to-text/api"
+
+    SMMY_API_KEY = ""
+
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, SMMY_API_KEY)
     bot.hello()
 
-    # bot.chat()
+    bot.chat()
 
     def add_mode_file_input(path, bot):
         '''
@@ -379,4 +393,4 @@ if __name__ == "__main__":
         for l in lines:
             bot.add_note(l.strip())
             
-    add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)
+   # add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)

@@ -15,6 +15,7 @@ import re
 import json
 import sys
 import pickle
+import requests
 import pyaudio
 import wave
 import requests
@@ -32,7 +33,7 @@ from ibm_watson import SpeechToTextV1
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMY_API_KEY):
         '''
         Initialize a hindsight chatbot
 
@@ -119,6 +120,8 @@ class Hindsight(object):
         self.pyAudio = pyaudio.PyAudio()
 
 
+        self.SMMY_API_KEY = SMMY_API_KEY
+
     def hello(self):
         '''
         Introductory Message
@@ -150,10 +153,17 @@ class Hindsight(object):
 
             results = [result_doc["html"] for result_doc in response.result["results"]]
 
-            # SUMMARIZE_HERE
+            unsummarizedText = "";
+            
+            for result in results:
+                unsummarizedText += result.splitlines()[2] #the sentences are at index 2, title at 0, space a 1
+        
 
-            return results
+            response = requests.post("https://api.smmry.com/SM_API_KEY="+self.SMMY_API_KEY, data = {
+                "sm_api_input": unsummarizedText})
 
+            return([response.json()['sm_api_content']])
+        
         def _showNotesRoutine(query_text):
             response = self.discovery.query(self.enviornment_id, self.collection_id,
                                     natural_language_query = query_text,
@@ -503,17 +513,12 @@ if __name__ == "__main__":
 
     S2T_KEY = ""
     S2T_URL = ""
+    SMMY_API_KEY = ""
 
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL)
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMY_API_KEY)
     bot.hello()
 
     bot.chat()
-
-    # bot.speech_to_text()
-
-    # print(pickle.load( open( bot.GLOBAL_ENTITIES, "rb" ) ))
-
-
     # def add_mode_file_input(path, bot):
     #     '''
     #     Add every line from file as 'add note' conversation input.

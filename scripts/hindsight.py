@@ -16,16 +16,24 @@ import json
 import sys
 import pickle
 import requests
+import pyaudio
+import wave
+import requests
+from collections import deque
+import math
+import audioop
+import time
 
 from watson_developer_cloud import DiscoveryV1 # https://cloud.ibm.com/apidocs/discovery?language=python
 from watson_developer_cloud import NaturalLanguageUnderstandingV1
 from watson_developer_cloud.natural_language_understanding_v1 import Features, EntitiesOptions, KeywordsOptions
 from watson_developer_cloud import AssistantV2
 from watson_developer_cloud.watson_service import WatsonApiException
+from ibm_watson import SpeechToTextV1
 
 class Hindsight(object):
 
-    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, SMMY_API_KEY):
+    def __init__(self, API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_API_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMY_API_KEY):
         '''
         Initialize a hindsight chatbot
 
@@ -39,15 +47,17 @@ class Hindsight(object):
             'add_mode': 1,
             'ask_mode': 2
         }
+        self.speech_mode_enabled = False
 
         self.intents = {
-            'show_notes'      : 1,
-            'summarize_notes': 2
+            'show_notes'     : 1,
+            'summarize_notes': 2,
+            'sentiment_notes': 3
         }
 
         self.state = self.chat_states['add_mode']
         self.prompt = '>>> '
-        self.chatprompt = '~~~ '
+        self.chatprompt = '\t~~~ '
         self.state_prompt = 'Add a note: '
 
         self.discovery = DiscoveryV1(
@@ -102,8 +112,13 @@ class Hindsight(object):
             print('!!! ERROR: ./scripts/intent_training_data.csv required')
             quit()
         lines = open(self.ROOT_PATH+'/intent_training_data.csv').readlines()
-        lines = [l.strip().split(',')[0] for l in lines]
-        self.INTENT_LINES = lines
+        self.INTENT_LINES = [l.strip().split(',')[0] for l in lines]
+
+        self.S2T_KEY = S2T_KEY
+        self.S2T_URL = S2T_URL
+
+        self.pyAudio = pyaudio.PyAudio()
+
 
         self.SMMY_API_KEY = SMMY_API_KEY
 
@@ -114,7 +129,7 @@ class Hindsight(object):
         print('\n')
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('`hindsight`. A journalling application.')
-        print("commands: \n\t/add to enter 'add note' mode, \n\t/ask to enter 'query notes' mode, \n\t/quit to quit")
+        print("commands: \n\t/add to enter 'add note' mode, \n\t/ask to enter 'query notes' mode, \n\t/speech to enable voice interface (say 'disable speech' to turn off) \n\t/quit to quit")
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('\n')
 
@@ -136,8 +151,7 @@ class Hindsight(object):
                                             natural_language_query = query_text,
                                             count=1000)
 
-           
-            results = [result_doc["text"] for result_doc in response.result["results"]]
+            results = [result_doc["html"] for result_doc in response.result["results"]]
 
             unsummarizedText = "";
             
@@ -153,17 +167,50 @@ class Hindsight(object):
         def _showNotesRoutine(query_text):
             response = self.discovery.query(self.enviornment_id, self.collection_id,
                                     natural_language_query = query_text,
-                                    # sort="enriched_text.sentiment.document.score",
-                                    # highlight=True,
                                     count=5 )
 
             results = [result_doc["text"] for result_doc in response.result["results"]]
             return results
 
+        def _sentimentNotesRoutine(query_text):
+            response = self.discovery.query(self.enviornment_id, self.collection_id,
+                        natural_language_query = query_text,
+                        count=5 )
 
-        raw_input = str(input(self.prompt + self.state_prompt))
+            sentiments = [result_doc["enriched_text"]["sentiment"]["document"]["score"] for result_doc in response.result["results"]]
+            avg_sentiment = sum(sentiments)/len(sentiments)
+            result = []
 
-        if raw_input == '/quit':
+            if -0.75 > avg_sentiment:
+                result.append("Your notes show that you feel terrible about that!")
+            if -0.50 < avg_sentiment and avg_sentiment < -0.25:
+                result.append("Your notes show that you feel pretty bad about that!")
+            if -0.25 < avg_sentiment and avg_sentiment < 0:
+                result.append("Your notes show that you don't feel to bad about that.")
+            if 0 < avg_sentiment and avg_sentiment < .25:
+                result.append("Your notes show that you feel pretty OK about that.")
+            if .25 < avg_sentiment and avg_sentiment < .5:
+                result.append("Your notes show that you feel well and good about that.")
+            if .5 < avg_sentiment and avg_sentiment < .75:
+                result.append("Your notes show that you feel really happy about that!")
+            if .75 < avg_sentiment:
+                result.append("Your notes show that you feel really fantastic about that!")
+
+            return result
+
+        if(self.speech_mode_enabled):
+            print(self.chatprompt+"Please say your query...")
+            raw_input = self.speech_to_text()
+            print(self.chatprompt+"I think you said: "+raw_input)
+        else:
+            raw_input = str(input(self.prompt + self.state_prompt))
+        raw_input = raw_input.strip()
+
+        if raw_input == '':
+            print(self.chatprompt+"I didn't catch that, could you try again?")
+            return self.chat()
+
+        elif raw_input == '/quit':
             return 1
 
         elif raw_input == '/add':
@@ -173,6 +220,15 @@ class Hindsight(object):
         elif raw_input == '/ask':
             self.state = self.chat_states['ask_mode']
             self.state_prompt = 'Ask your notes: '
+
+        elif raw_input == '/speech':
+            self.speech_mode_enabled = True
+            print(self.chatprompt+"You have enabled speech to text input, and text to speech output.")
+
+
+        elif raw_input == 'disable speech':
+            self.speech_mode_enabled = False
+            print(self.chatprompt+"You have disabled speech.")
 
         else:
 
@@ -209,6 +265,8 @@ class Hindsight(object):
                         results = _summarizeNotesRoutine(query_text)
                     if intent == "show_notes":
                         results = _showNotesRoutine(query_text)
+                    if intent == "sentiment_notes":
+                        results = _sentimentNotesRoutine(query_text)
 
                     print(self.chatprompt+"Here are some results...")
 
@@ -224,9 +282,9 @@ class Hindsight(object):
 
                 # else use default response
                 else:
-                    print(self.chatprompt+'I am note sure what you mean...')
+                    print(self.chatprompt+'I am not sure what you mean...')
 
-        self.chat()
+        return self.chat()
 
     def parse_ask_intent(self, raw_input):
 
@@ -244,8 +302,9 @@ class Hindsight(object):
         ).get_result()
 
         # print(json.dumps(response, indent=2))
-
-        return response["output"]["intents"][0]["intent"]
+        if(len(response["output"]["intents"]) > 0):
+            return response["output"]["intents"][0]["intent"]
+        return -1
 
     def add_note(self, note_text):
 
@@ -276,8 +335,8 @@ class Hindsight(object):
 
         # keep track of entities locally
         pickle.dump(global_entities, open( self.GLOBAL_ENTITIES, "wb" ) )
-        print((note_text[:100]+'...') if len(note_text) > 100 else note_text)
-        print("\t%s %s\n" % (best_entity, global_entities[best_entity]))
+        # print((note_text[:100]+'...') if len(note_text) > 100 else note_text)
+        # print("\t%s %s\n" % (best_entity, global_entities[best_entity]))
 
         # save note to local path
         best_entity = re.sub(' ', '_', best_entity)
@@ -347,6 +406,91 @@ class Hindsight(object):
 
         return result.result['document_id']
 
+    def speech_to_text(self):
+
+        def save_speech(data, p):
+            '''
+            Saves mic data to temporary WAV file.
+            '''
+            filename = 'output_'+str(int(time.time()))
+            # writes data to WAV file
+            data = b''.join(data)
+            wf = wave.open(filename + '.wav', 'wb')
+            wf.setnchannels(1)
+            wf.setsampwidth(p.get_sample_size(pyaudio.paInt16))
+            wf.setframerate(16000)  # TODO make this value a function parameter?
+            wf.writeframes(data)
+            wf.close()
+            return filename + '.wav'
+
+        def ibm_send(filename):
+            HEADERS = {
+                'Content-Type': 'audio/wav'
+            }
+
+            data = open(filename, 'rb').read()
+            response = requests.post(self.S2T_URL+'/v1/recognize', headers=HEADERS, data=data, auth=('apikey', self.S2T_KEY))
+            return response.json()
+
+        CHUNK = 1024  # CHUNKS of bytes to read each time from mic
+        FORMAT = pyaudio.paInt16
+        CHANNELS = 1
+        RATE = 16000
+        THRESHOLD = 225  # The threshold intensity that defines silence
+                          # and noise signal (an int. lower than THRESHOLD is silence).
+
+        SILENCE_LIMIT = 1  # Silence limit in seconds. The max ammount of seconds where
+                           # only silence is recorded. When this time passes the
+                           # recording finishes and the file is delivered.
+
+        PREV_AUDIO = 0.5  # Previous audio (in seconds) to prepend. When noise
+                          # is detected, how much of previously recorded audio is
+                          # prepended. This helps to prevent chopping the beggining
+                          # of the phrase.
+
+        #Open stream
+        stream = self.pyAudio.open(format=FORMAT,
+                        channels=CHANNELS,
+                        rate=RATE,
+                        input=True,
+                        frames_per_buffer=CHUNK)
+
+        print(self.chatprompt+"Say your query whenever you are ready")
+        audio2send = []
+        cur_data = ''  # current chunk  of audio data
+        rel = RATE/CHUNK
+        slid_win = deque(maxlen=int(SILENCE_LIMIT * rel))
+        #Prepend audio from 0.5 seconds before noise was detected
+        prev_audio = deque(maxlen=int(PREV_AUDIO * rel))
+        started = False
+        num_phrases = -1
+        n = num_phrases
+        response = ''
+
+        while (num_phrases == -1 or n > 0):
+            cur_data = stream.read(CHUNK)
+            slid_win.append(math.sqrt(abs(audioop.avg(cur_data, 4))))
+            if(sum([x > THRESHOLD for x in slid_win]) > 0):
+                if(not started):
+                    print(self.chatprompt+"I have started recording")
+                    started = True
+                audio2send.append(cur_data)
+            elif (started is True):
+                # The limit was reached, finish capture and deliver.
+                filename = save_speech(list(prev_audio) + audio2send, self.pyAudio)
+                # Send file to Google and get response
+                response = ibm_send(filename)
+                os.remove(filename)
+                break
+            else:
+                prev_audio.append(cur_data)
+
+        stream.close()
+
+        if(len(response["results"]) > 0):
+            return response["results"][0]["alternatives"][0]["transcript"]
+        return ''
+
     def get_collection_status(self):
         response = self.discovery.get_collection(self.enviornment_id, self.collection_id).get_result()
         # print(json.dumps(response, indent=2))
@@ -354,43 +498,41 @@ class Hindsight(object):
 
 if __name__ == "__main__":
 
-
-    URL= "https://gateway.watsonplatform.net/discovery/api"
     API_KEY= ""
+    URL= "https://gateway.watsonplatform.net/discovery/api"
     enviornment_id = ""
     collection_id = ""
 
-    NLU_URL = "https://gateway.watsonplatform.net/natural-language-understanding/api"
+
     NLU_API_KEY = ""
+    NLU_URL = "https://gateway.watsonplatform.net/natural-language-understanding/api"
 
     ASSISTANT_KEY = ""
-    ASSISTANT_URL = "https://gateway.watsonplatform.net/assistant/api"
+    ASSISTANT_URL = ""
     ASSISSTANT_ID = ""
 
     S2T_KEY = ""
-    S2T_URL = "https://stream.watsonplatform.net/speech-to-text/api"
-
+    S2T_URL = ""
     SMMY_API_KEY = ""
 
-    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, SMMY_API_KEY)
+    bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMY_API_KEY)
     bot.hello()
 
     bot.chat()
-
-    def add_mode_file_input(path, bot):
-        '''
-        Add every line from file as 'add note' conversation input.
-
-        :param path: filepath to document file or folder
-        '''
-        lines = []
-        if os.path.isfile(path):
-            lines += open(path).readlines()
-        else:
-            for f in [entry for entry in os.listdir(path) if os.path.isfile(os.path.join(path,entry))]:
-                print("reading: %s" % f)
-                lines += open(path+f).readlines()
-        for l in lines:
-            bot.add_note(l.strip())
-            
-   # add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)
+    # def add_mode_file_input(path, bot):
+    #     '''
+    #     Add every line from file as 'add note' conversation input.
+    #
+    #     :param path: filepath to document file or folder
+    #     '''
+    #     lines = []
+    #     if os.path.isfile(path):
+    #         lines += open(path).readlines()
+    #     else:
+    #         for f in [entry for entry in os.listdir(path) if os.path.isfile(os.path.join(path,entry))]:
+    #             print("reading: %s" % f)
+    #             lines += open(path+f).readlines()
+    #     for l in lines:
+    #         bot.add_note(l.strip())
+    #
+    # add_mode_file_input(bot.ROOT_PATH+"/../data/tcse_data/", bot)

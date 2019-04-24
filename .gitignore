@@ -15,3 +15,6 @@ keys.env
 /scripts/__pycache__
 /scripts/notes_metadata
 /scripts/notes.html
+
+
+*.wav

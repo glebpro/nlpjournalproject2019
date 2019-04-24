@@ -162,12 +162,24 @@ class Hindsight(object):
             return([response.json()['sm_api_content']])
 
         def _showNotesRoutine(query_text):
-            response = self.discovery.query(self.enviornment_id, self.collection_id,
-                                    natural_language_query = query_text,
-                                    count=5 )
 
-            results = [result_doc["text"] for result_doc in response.result["results"]]
-            return results
+            # # title match local documents first
+            query_text = re.sub(' ', '_', query_text).lower()
+            local_files = [entry for entry in os.listdir(self.METADATA_PATH) if os.path.isfile(os.path.join(self.METADATA_PATH,entry))]
+            local_files = [re.sub('\.html', '', entry).lower() for entry in local_files]
+
+            if query_text in local_files:
+                note = open(self.METADATA_PATH+"/"+query_text+".html").readlines()
+                return [' '.join(note)]
+
+            # # if not found, reach out to IBM cloud
+            else:
+                response = self.discovery.query(self.enviornment_id, self.collection_id,
+                                        natural_language_query = query_text,
+                                        count=5 )
+
+                results = [result_doc["text"] for result_doc in response.result["results"]]
+                return results
 
         def _sentimentNotesRoutine(query_text):
             response = self.discovery.query(self.enviornment_id, self.collection_id,
@@ -281,13 +293,12 @@ class Hindsight(object):
                 else:
                     print(self.chatprompt+'I am not sure what you mean...')
 
+        print()
         return self.chat()
 
     def parse_ask_intent(self, raw_input):
 
         input = raw_input.strip()
-
-        # TODO hard match on training data
 
         response = self.assistant.message(
             assistant_id=self.assistant_id,
@@ -433,7 +444,7 @@ class Hindsight(object):
         FORMAT = pyaudio.paInt16
         CHANNELS = 1
         RATE = 16000
-        THRESHOLD = 225  # The threshold intensity that defines silence
+        THRESHOLD = 400  # The threshold intensity that defines silence
                           # and noise signal (an int. lower than THRESHOLD is silence).
 
         SILENCE_LIMIT = 1  # Silence limit in seconds. The max ammount of seconds where
@@ -473,9 +484,7 @@ class Hindsight(object):
                     started = True
                 audio2send.append(cur_data)
             elif (started is True):
-                # The limit was reached, finish capture and deliver.
                 filename = save_speech(list(prev_audio) + audio2send, self.pyAudio)
-                # Send file to Google and get response
                 response = ibm_send(filename)
                 os.remove(filename)
                 break
@@ -506,7 +515,6 @@ class Hindsight(object):
 
     def get_collection_status(self):
         response = self.discovery.get_collection(self.enviornment_id, self.collection_id).get_result()
-        # print(json.dumps(response, indent=2))
         return round( (response["document_counts"]["available"] / (response["document_counts"]["processing"] + response["document_counts"]["available"])) * 100 , 2 )
 
 if __name__ == "__main__":

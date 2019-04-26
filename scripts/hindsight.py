@@ -132,80 +132,149 @@ class Hindsight(object):
         print('~~~~~~~~~~~~~~~~~~~~~')
         print('\n')
 
+    # preprocess text for API input
+    # crudely remove training data phrases to get 'non-intent' part of input
+    def _scrubHindsightIntentQueryText(self, raw_input):
+        pattern = re.compile("\\b("+'|'.join(self.INTENT_LINES)+")\\W", re.I)
+        result = raw_input.strip().lower()
+        result = pattern.sub("", result)
+        return result
+
+    def _summarizeNotesRoutine(self, query_text):
+        response = self.discovery.query(self.enviornment_id, self.collection_id,
+                                        natural_language_query = query_text,
+                                        count=1000)
+
+        results = [result_doc["text"] for result_doc in response.result["results"]]
+        unsummarizedText = "";
+
+        for result in results:
+            unsummarizedText += result.splitlines()[2] #the sentences are at index 2, title at 0, space a 1
+
+        response = requests.post("https://api.smmry.com/SM_API_KEY="+self.SMMRY_API_KEY, data = {
+            "sm_api_input": unsummarizedText})
+
+        return([response.json()['sm_api_content']])
+
+    def _showNotesRoutine(self, query_text):
+
+        # # title match local documents first
+        query_text = re.sub(' ', '_', query_text).lower()
+        local_files = [entry for entry in os.listdir(self.METADATA_PATH) if os.path.isfile(os.path.join(self.METADATA_PATH,entry))]
+        local_files = [re.sub('\.html', '', entry).lower() for entry in local_files]
+
+        if query_text in local_files:
+            note = open(self.METADATA_PATH+"/"+query_text+".html").readlines()
+            return [' '.join(note)]
+
+        # # if not found, reach out to IBM cloud
+        else:
+            response = self.discovery.query(self.enviornment_id, self.collection_id,
+                                    natural_language_query = query_text,
+                                    count=5 )
+
+            results = [result_doc["text"] for result_doc in response.result["results"]]
+            return results
+
+    def _sentimentNotesRoutine(self, query_text):
+        response = self.discovery.query(self.enviornment_id, self.collection_id,
+                    natural_language_query = query_text,
+                    count=5 )
+
+        sentiments = [result_doc["enriched_text"]["sentiment"]["document"]["score"] for result_doc in response.result["results"]]
+        avg_sentiment = sum(sentiments)/len(sentiments)
+        result = []
+
+        if -0.75 > avg_sentiment:
+            result.append("Your notes show that you feel terrible about that!")
+        if -0.50 < avg_sentiment and avg_sentiment < -0.25:
+            result.append("Your notes show that you feel pretty bad about that!")
+        if -0.25 < avg_sentiment and avg_sentiment < 0:
+            result.append("Your notes show that you don't feel to bad about that.")
+        if 0 < avg_sentiment and avg_sentiment < .25:
+            result.append("Your notes show that you feel pretty OK about that.")
+        if .25 < avg_sentiment and avg_sentiment < .5:
+            result.append("Your notes show that you feel well and good about that.")
+        if .5 < avg_sentiment and avg_sentiment < .75:
+            result.append("Your notes show that you feel really happy about that!")
+        if .75 < avg_sentiment:
+            result.append("Your notes show that you feel really fantastic about that!")
+
+        return result
+
+    def web_chat(self, input_text):
+
+
+        return_object = {'state': self.state, 'chatbotresponse': '', 'documentresponse': ''}
+
+        # process commands
+        if input_text == '/quit':
+            return_object['chatbotresponse'] = "Goodbye!"
+            return return_object
+
+        elif input_text == '/add':
+            self.state = self.chat_states['add_mode']
+            return_object['state'] = self.state
+            return_object['chatbotresponse'] = 'Switched to Add mode'
+            return return_object
+
+        elif input_text == '/ask':
+            self.state = self.chat_states['ask_mode']
+            return_object['state'] = self.state
+            return_object['chatbotresponse'] = 'Switched to Ask mode'
+            return return_object
+
+        # process input note or intent
+        else:
+            if self.state == self.chat_states['add_mode']:
+
+                result = self.add_note(input_text)
+
+                if result == -1:
+                    return_object['chatbotresponse'] = "Error occured during doucment upload. (Probably not enough text)"
+                    return return_object
+                return_object['chatbotresponse'] = "My best entity for that note is: "+result
+                return return_object
+
+            elif self.state == self.chat_states['ask_mode']:
+
+                # what is the user intented to do?
+                intent = self.parse_ask_intent(input_text)
+
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ hindsight intents
+                # if a hindsight intent
+                if intent in list(self.intents.keys()):
+
+                    query_text = self._scrubHindsightIntentQueryText(input_text)
+
+                    if intent == "summarize_notes":
+                        results = self._summarizeNotesRoutine(query_text)
+                    if intent == "show_notes":
+                        results = self._showNotesRoutine(query_text)
+                    if intent == "sentiment_notes":
+                        results = self._sentimentNotesRoutine(query_text)
+
+                    return_object['chatbotresponse'] = "Here are some results..."
+                    return_object['documentresponse'] = results
+                    return return_object
+
+                # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ IBM + catchall intents
+
+                # goodbye/ending intent
+                elif intent == "General_Ending":
+                    return_object['chatbotresponse'] = "All right then, goodbye!"
+                    return return_object
+
+                # else use default response
+                else:
+                    return_object['chatbotresponse'] = "I am not sure what you mean..."
+                    return return_object
+
+
     def chat(self):
         '''
         Start chat loop.
         '''
-
-        # preprocess text for API input
-        # crudely remove training data phrases to get 'non-intent' part of input
-        def _scrubHindsightIntentQueryText(raw_input):
-            pattern = re.compile("\\b("+'|'.join(self.INTENT_LINES)+")\\W", re.I)
-            result = raw_input.strip().lower()
-            result = pattern.sub("", result)
-            return result
-
-        def _summarizeNotesRoutine(query_text):
-            response = self.discovery.query(self.enviornment_id, self.collection_id,
-                                            natural_language_query = query_text,
-                                            count=1000)
-
-            results = [result_doc["text"] for result_doc in response.result["results"]]
-            unsummarizedText = "";
-
-            for result in results:
-                unsummarizedText += result.splitlines()[2] #the sentences are at index 2, title at 0, space a 1
-
-            response = requests.post("https://api.smmry.com/SM_API_KEY="+self.SMMRY_API_KEY, data = {
-                "sm_api_input": unsummarizedText})
-
-            return([response.json()['sm_api_content']])
-
-        def _showNotesRoutine(query_text):
-
-            # # title match local documents first
-            query_text = re.sub(' ', '_', query_text).lower()
-            local_files = [entry for entry in os.listdir(self.METADATA_PATH) if os.path.isfile(os.path.join(self.METADATA_PATH,entry))]
-            local_files = [re.sub('\.html', '', entry).lower() for entry in local_files]
-
-            if query_text in local_files:
-                note = open(self.METADATA_PATH+"/"+query_text+".html").readlines()
-                return [' '.join(note)]
-
-            # # if not found, reach out to IBM cloud
-            else:
-                response = self.discovery.query(self.enviornment_id, self.collection_id,
-                                        natural_language_query = query_text,
-                                        count=5 )
-
-                results = [result_doc["text"] for result_doc in response.result["results"]]
-                return results
-
-        def _sentimentNotesRoutine(query_text):
-            response = self.discovery.query(self.enviornment_id, self.collection_id,
-                        natural_language_query = query_text,
-                        count=5 )
-
-            sentiments = [result_doc["enriched_text"]["sentiment"]["document"]["score"] for result_doc in response.result["results"]]
-            avg_sentiment = sum(sentiments)/len(sentiments)
-            result = []
-
-            if -0.75 > avg_sentiment:
-                result.append("Your notes show that you feel terrible about that!")
-            if -0.50 < avg_sentiment and avg_sentiment < -0.25:
-                result.append("Your notes show that you feel pretty bad about that!")
-            if -0.25 < avg_sentiment and avg_sentiment < 0:
-                result.append("Your notes show that you don't feel to bad about that.")
-            if 0 < avg_sentiment and avg_sentiment < .25:
-                result.append("Your notes show that you feel pretty OK about that.")
-            if .25 < avg_sentiment and avg_sentiment < .5:
-                result.append("Your notes show that you feel well and good about that.")
-            if .5 < avg_sentiment and avg_sentiment < .75:
-                result.append("Your notes show that you feel really happy about that!")
-            if .75 < avg_sentiment:
-                result.append("Your notes show that you feel really fantastic about that!")
-
-            return result
 
         if(self.speech_mode_enabled):
             print(self.chatprompt+"Please say your query...")
@@ -232,8 +301,7 @@ class Hindsight(object):
 
         elif raw_input == '/speech':
             self.speech_mode_enabled = True
-            print(self.chatprompt+"You have enabled speech to text input, and text to speech output.")
-
+            print(self.chatprompt+"You have enabled speech to text input.")
 
         elif raw_input == 'disable speech':
             self.speech_mode_enabled = False
@@ -255,7 +323,7 @@ class Hindsight(object):
                 # CATCH and RESPOND to 'to little text error' here
                 result = self.add_note(raw_input)
 
-                if result != 1:
+                if result == -1:
                     print(self.chatprompt+"Something went wrong...")
 
             # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ASK mode
@@ -268,14 +336,14 @@ class Hindsight(object):
                 # if a hindsight intent
                 if intent in list(self.intents.keys()):
 
-                    query_text = _scrubHindsightIntentQueryText(raw_input)
+                    query_text = self._scrubHindsightIntentQueryText(raw_input)
 
                     if intent == "summarize_notes":
-                        results = _summarizeNotesRoutine(query_text)
+                        results = self._summarizeNotesRoutine(query_text)
                     if intent == "show_notes":
-                        results = _showNotesRoutine(query_text)
+                        results = self._showNotesRoutine(query_text)
                     if intent == "sentiment_notes":
-                        results = _sentimentNotesRoutine(query_text)
+                        results = self._sentimentNotesRoutine(query_text)
 
                     print(self.chatprompt+"Here are some results...")
 
@@ -356,7 +424,7 @@ class Hindsight(object):
         # print(best_entity, global_entities[best_entity])
         self.add_note_file(best_entity, note_path)
 
-        return 1
+        return best_entity
 
     def find_entities(self, text):
         '''

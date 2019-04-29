@@ -10,7 +10,6 @@ URL= "https://gateway.watsonplatform.net/discovery/api"
 enviornment_id = ""
 collection_id = ""
 
-
 NLU_API_KEY = ""
 NLU_URL = "https://gateway.watsonplatform.net/natural-language-understanding/api"
 
@@ -24,8 +23,6 @@ S2T_URL = ""
 SMMRY_API_KEY = ""
 
 bot = Hindsight(API_KEY, URL, enviornment_id, collection_id, NLU_API_KEY, NLU_URL, ASSISTANT_KEY, ASSISTANT_URL, ASSISSTANT_ID, S2T_KEY, S2T_URL, SMMRY_API_KEY)
-
-# curl -d '{"input_text":"/ask", "key":"<SMMRY_API_KEY>"}' -H "Content-Type: application/json" -X POST http://127.0.0.1:5000/web_chat
 
 @app.route("/get_state", methods=['GET'])
 def get_state():

@@ -6,7 +6,7 @@ Term project for ENGL 582 _Seminar in Computational Linguistics (Chatbots and Vi
 
 
 ## Abstract:
-TBD
+Hindsight combines the latest advancements in computational linguistics and artificial intelligence with a series of cloud-based API calls to streamline the collection, summarization, and analyzation of consumer-driven data. All this to say, Hindsight is a command line interface that allows users to store and retrieve notes in a intuitive way using their natural language. After loading your notes into Hindsight you can ask it "What did I say about dogs?", or "What is the most important thing I said about dogs?" or even, "How do I feel about dogs?" and hindsight will provide you with a meaningful response which is based directly off the notes you've taken.
 
 ## Technicals
 
@@ -38,7 +38,15 @@ TBD
 
 ##### hindsight app
 
-To run the chatbot: `python scripts/hindsight.py`
+To run the chatbot as a command line app: `$ python scripts/hindsight.py`
+
+To run the chatbot as a web service, populate `scripts/hindsight_webservice.py` with the needed keys and run : `$ export FLASK_APP=scripts/hindsight_webservice.py` then `$ python -m flask run`
+
+The following `curl` command retrieves the current chatbot ask/add state:
+`curl -X GET http://127.0.0.1:5000/get_state`
+
+To issue command to hindsight:
+`curl -d '{"input_text":"/ask", "key":"<SMMRY_API_KEY>"}' -H "Content-Type: application/json" -X POST http://127.0.0.1:5000/web_chat`
 
 ##### Sample Data
 

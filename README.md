@@ -3,7 +3,7 @@ Term project for ENGL 582 _Seminar in Computational Linguistics (Chatbots and Vi
 
 [@glebpro](https://github.com/glebpro) Gleb Promokhov
 [@LambStack](https://github.com/LambStack) Joseph Agnelli
-
+[@cmp5987](https://github.com/cmp5987) Catherine Poggioli
 
 ## Abstract:
 Hindsight combines the latest advancements in computational linguistics and artificial intelligence with a series of cloud-based API calls to streamline the collection, summarization, and analyzation of consumer-driven data. All this to say, Hindsight is a command line interface that allows users to store and retrieve notes in a intuitive way using their natural language. After loading your notes into Hindsight you can ask it "What did I say about dogs?", or "What is the most important thing I said about dogs?" or even, "How do I feel about dogs?" and hindsight will provide you with a meaningful response which is based directly off the notes you've taken.
@@ -47,6 +47,28 @@ The following `curl` command retrieves the current chatbot ask/add state:
 
 To issue command to hindsight:
 `curl -d '{"input_text":"/ask", "key":"<SMMRY_API_KEY>"}' -H "Content-Type: application/json" -X POST http://127.0.0.1:5000/web_chat`
+
+##### hindsight web app
+
+Located inside the website folder in the repository is a copy of the code that can be used to host the Web App locally. Due to CORs issues and a limitation on free providers that allow you to host php code, hindsight website is not avaliable to the general public.
+
+To reach the site you must either
+- Connect to serenity.ist.rit.edu using a vpn or while on campus (FASTEST METHOD)
+- Host the code locally
+
+###### Connecting to serenity.ist.rit.edu
+
+    1. If on campus, simply visit the hosted [website](http://serenity.ist.rit.edu/~cmp5987/NLP/)
+    2. Otherwise, you must download a vpn provided by RIT at [this location](https://www.rit.edu/its/services/network-communication/vpn)
+    3. Follow instructions to install the VPN, note if you have issues try using explorer browser
+    4. Start up VPN, requires you to sign in using your school credentials
+    5. Visit the site mentioned in step 1 
+
+###### Hosting Locally
+    1. The code uses php, and it is going to be important to be able to startup apache and mysql using [XAMPP](https://www.apachefriends.org/index.html)
+    2. Install XAMPP and run the exe, start up apache and mysql. Relocate code for website, to httpd folder in XAMMP, this will allow you to access the website by going to localhost/website/hindsight.php or localhost/webchat/index.php. 
+    3. Currently this will connect to the external web service that is getting hosted at http://ec2-18-234-167-118.compute-1.amazonaws.com/web_chat
+    4. If you want to run both parts locally, you must change the curl requests inside the php file to route locally instead of to http://ec2-18-234-167-118.compute-1.amazonaws.com/web_chat. 
 
 ##### Sample Data
 
